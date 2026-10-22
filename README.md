@@ -25,6 +25,8 @@ claude plugin install galaxie --marketplace idzouk/claude-galaxie
 
 Il faut une version récente de Claude Code : les mods sont une fonction en accès anticipé, qui peut évoluer.
 
+Le panneau marche partout : en pixel art dans le terminal, et en planète vectorielle animée dans l'app Claude (onglet Code), l'extension VS Code et le mobile. Dans l'app, pour l'installer : bouton **+** à côté de la zone de saisie → **Plugins** → **Add marketplace** avec `idzouk/claude-galaxie` → **Add plugin**.
+
 ## Installer la mini-planète (Mac seulement, optionnel)
 
 Elle a besoin du mod Galaxie installé, qui lui envoie l'état de Claude. Tu la compiles toi-même, ça prend quelques secondes :

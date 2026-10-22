@@ -14,7 +14,7 @@ const PANE = {
   },
 } as const
 
-test('le panneau se dessine en Raster dans le terminal, et un outil passe intact', async ($, on) => {
+test('le panneau se dessine en Raster dans le terminal et en SVG dans l’app, et un outil passe intact', async ($, on) => {
   on('command.register', () => ({ value: { command: 'galaxie' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -36,6 +36,7 @@ test('le panneau se dessine en Raster dans le terminal, et un outil passe intact
   await ui.unmount()
 
   const other = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await other.find({ type: 'Text', text: /terminal/ })).toBeDefined()
+  expect(await other.find({ type: 'Text', text: /Vérifier le site/ })).toBeDefined()
+  expect(await other.find({ type: 'Svg' })).toBeDefined()
   await other.unmount()
 })

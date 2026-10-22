@@ -45,7 +45,8 @@ final class VuePlanete: NSView {
 
     func avancer() {
         let horsLigne = maintenantMs() - etat.t > 15_000
-        let cible: (CGFloat, CGFloat, CGFloat) = horsLigne || etat.etat == "veille" ? (0.42, 0.44, 0.55) : couleurHex(etat.couleur)
+        // même couleur que le panneau Galaxie ; gris seulement quand Claude Code ne répond plus
+        let cible: (CGFloat, CGFloat, CGFloat) = horsLigne ? (0.42, 0.44, 0.55) : couleurHex(etat.couleur)
         rgb = (rgb.0 + (cible.0 - rgb.0) * 0.12, rgb.1 + (cible.1 - rgb.1) * 0.12, rgb.2 + (cible.2 - rgb.2) * 0.12)
         let cibleVitesse: CGFloat = etat.etat == "travail" && !horsLigne ? 0.06 : 0.012
         vitesse += (cibleVitesse - vitesse) * 0.05

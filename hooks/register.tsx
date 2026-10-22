@@ -109,6 +109,13 @@ function classify(tool: string, input: Record<string, unknown>): { kind: Kind; l
   return { kind: 'autre', label: tool }
 }
 
+// la couleur de la planète, la même partout (panneau, app, mini-planète) :
+// l'action en cours quand Claude travaille, vert quand la réponse est prête, violet en veille
+function restColor(st: { color: number; busy: boolean }): number {
+  if (st.busy) return st.color
+  return finaleAt ? C.succes : C.titre
+}
+
 function state(): { text: string; color: number; busy: boolean } {
   const last = [...running.values()].pop()
   if (last) return { text: last.label, color: KIND_COLOR[last.kind], busy: true }
@@ -172,7 +179,9 @@ function drawScene(accent: number) {
     s.x -= 0.0001 * s.b
     if (s.x < 0) s.x += 1
     const on = Math.sin(t * 0.05 * s.tw + s.ph) > -0.2
-    add(s.x * W, s.y * H, C.blanc, on ? s.b * 0.75 : s.b * 0.3)
+    // une étoile = une case pleine (2×2 pixels) : un quart de bloc isolé s'affiche en crochet dans certaines polices
+    const sx = Math.floor((s.x * W) / 2) * 2, sy = Math.floor((s.y * H) / 2) * 2, k = on ? s.b * 0.75 : s.b * 0.3
+    add(sx, sy, C.blanc, k); add(sx + 1, sy, C.blanc, k); add(sx, sy + 1, C.blanc, k); add(sx + 1, sy + 1, C.blanc, k)
   }
   // étoiles filantes
   if (Math.random() < 0.012) shooting.push({ x: rand(W * 0.3, W), y: rand(0, H * 0.4), vx: -rand(4, 7), vy: rand(1, 2), life: 18 })
@@ -311,7 +320,7 @@ function frame(): string {
   const stepLines = !steps.length ? 0 : allDone ? 1 : Math.min(3, steps.length)
   const infoRows = 1 + 2 + stepLines + 1
   heroRows = Math.max(6, rows - infoRows)
-  drawScene(st.busy ? st.color : C.titre)
+  drawScene(restColor(st))
 
   const words = new Uint32Array(cols * rows * 3)
   for (let i = 0; i < cols * rows; i++) { words[i * 3] = 32; words[i * 3 + 1] = DEF; words[i * 3 + 2] = DEF }
@@ -454,6 +463,114 @@ async function restore($: EngineInterface) {
   plan = await read($, planAtom)
 }
 
+// --- version vectorielle pour l'app, l'éditeur et le mobile : un SVG animé (SMIL), redessiné quand l'état change ---
+const hex = (c: number) => '#' + c.toString(16).padStart(6, '0')
+const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const seed = (s: string) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 9973, 7) / 9973
+
+function svgScene(): string {
+  const st = state()
+  const finale = now() - finaleAt < FINALE_MS
+  const base = finale ? C.succes : restColor(st)
+  const col = hex(base), light = hex(lerp(base, C.blanc, 0.45)), dark = hex(lerp(base, 0x000000, 0.78))
+  const Wv = 400, Hv = 250, cx = 200, cy = 125, R = 42
+  const out: string[] = []
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${Wv} ${Hv}" font-family="-apple-system, Helvetica, Arial, sans-serif">`)
+  out.push(`<defs>
+<radialGradient id="pl" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="${light}"/><stop offset="0.45" stop-color="${col}"/><stop offset="1" stop-color="${dark}"/></radialGradient>
+<radialGradient id="glow"><stop offset="0" stop-color="${col}" stop-opacity="0.4"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>
+<clipPath id="back"><rect x="0" y="0" width="${Wv}" height="${cy}"/></clipPath>
+<clipPath id="front"><rect x="0" y="${cy}" width="${Wv}" height="${Hv - cy}"/></clipPath>
+<clipPath id="body"><circle cx="${cx}" cy="${cy}" r="${R}"/></clipPath>
+</defs>`)
+  out.push(`<rect width="${Wv}" height="${Hv}" rx="14" fill="${hex(pack(SPACE))}"/>`)
+  for (let i = 0; i < 46; i++) {
+    const x = (seed('x' + i) * Wv).toFixed(1), y = (seed('y' + i) * Hv).toFixed(1), d = (2 + seed('d' + i) * 4).toFixed(1)
+    out.push(`<circle cx="${x}" cy="${y}" r="${(0.6 + seed('r' + i)).toFixed(1)}" fill="#f2f4ff"><animate attributeName="opacity" values="0.2;0.9;0.2" dur="${d}s" begin="-${d}s" repeatCount="indefinite"/></circle>`)
+  }
+  out.push(`<g opacity="0"><animate attributeName="opacity" values="0;1;0;0" keyTimes="0;0.02;0.06;1" dur="11s" begin="2s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;-140 60;-140 60" keyTimes="0;0.06;1" dur="11s" begin="2s" repeatCount="indefinite"/><line x1="360" y1="20" x2="385" y2="9" stroke="#f2f4ff" stroke-width="1.5" stroke-linecap="round"/></g>`)
+  const pulse = st.busy ? '1.4s' : '4s'
+  out.push(`<circle cx="${cx}" cy="${cy}" r="${R * 2.3}" fill="url(#glow)"><animate attributeName="opacity" values="0.55;1;0.55" dur="${pulse}" repeatCount="indefinite"/></circle>`)
+  const ring = (clip: string) => `<g clip-path="url(#${clip})"><ellipse cx="${cx}" cy="${cy}" rx="${R * 1.8}" ry="${R * 0.42}" fill="none" stroke="${light}" stroke-opacity="0.75" stroke-width="5"/><ellipse cx="${cx}" cy="${cy}" rx="${R * 1.55}" ry="${R * 0.34}" fill="none" stroke="${light}" stroke-opacity="0.4" stroke-width="2"/></g>`
+  out.push(ring('back'))
+  out.push(`<circle cx="${cx}" cy="${cy}" r="${R}" fill="url(#pl)"/>`)
+  out.push(`<g clip-path="url(#body)" opacity="0.18">`)
+  for (let i = 0; i < 4; i++) {
+    const y = cy - R + 10 + i * 20
+    out.push(`<ellipse cx="${cx}" cy="${y}" rx="${R * 1.4}" ry="4" fill="${i % 2 ? dark : '#ffffff'}"><animateTransform attributeName="transform" type="translate" values="-14 0;14 0;-14 0" dur="${st.busy ? 3 + i : 9 + i}s" repeatCount="indefinite"/></ellipse>`)
+  }
+  out.push(`</g>`)
+  out.push(ring('front'))
+
+  // comètes : une par action en cours (ou l'état quand Claude écrit / réfléchit), le nom voyage avec elle
+  const list: { id: string; label: string; color: number }[] = [...running.entries()].map(([id, r]) => ({ id, label: r.label, color: KIND_COLOR[r.kind] }))
+  if (!list.length && st.busy) list.push({ id: '__etat', label: st.text, color: st.color })
+  list.slice(0, 4).forEach((c, i) => {
+    const rx = R * 2.05 + i * 18, ry = rx * 0.3
+    const dur = 6 + i * 1.5
+    const off = (seed(c.id) * dur).toFixed(2)
+    out.push(`<path id="o${i}" d="M ${cx - rx} ${cy} a ${rx} ${ry} 0 1 0 ${rx * 2} 0 a ${rx} ${ry} 0 1 0 ${-rx * 2} 0" fill="none"/>`)
+    for (let k = 9; k >= 0; k--) {
+      const r = k === 0 ? 3.4 : 2.8 - k * 0.22
+      const fill = k === 0 ? '#ffffff' : hex(c.color)
+      out.push(`<circle r="${r.toFixed(2)}" fill="${fill}" opacity="${(1 - k / 10).toFixed(2)}"><animateMotion dur="${dur}s" begin="-${(+off + k * 0.06).toFixed(2)}s" repeatCount="indefinite"><mpath href="#o${i}"/></animateMotion></circle>`)
+    }
+    out.push(`<text font-size="11" fill="${hex(lerp(c.color, C.blanc, 0.4))}" dx="9" dy="-7"><animateMotion dur="${dur}s" begin="-${off}s" repeatCount="indefinite"><mpath href="#o${i}"/></animateMotion>${xml(cut(c.label, 34))}</text>`)
+  })
+
+  // le bouquet de fin : deux ondes et des confettis, une seule fois
+  if (finale) {
+    for (const [i, c] of [C.succes, C.or].entries())
+      out.push(`<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.8}" fill="none" stroke="${hex(c)}" stroke-width="3"><animate attributeName="rx" from="${R}" to="${R * (3.4 + i)}" dur="1.6s" fill="freeze"/><animate attributeName="ry" from="${R * 0.8}" to="${R * (2.6 + i * 0.6)}" dur="1.6s" fill="freeze"/><animate attributeName="opacity" from="1" to="0" dur="1.6s" fill="freeze"/></ellipse>`)
+    const pal = [C.or, C.succes, C.blanc, C.pensee, C.lecture]
+    for (let i = 0; i < 40; i++) {
+      const a = seed('a' + i + finaleAt) * Math.PI * 2, d = 60 + seed('f' + i + finaleAt) * 90
+      out.push(`<circle cx="${cx}" cy="${cy - R * 0.6}" r="2.6" fill="${hex(pal[i % pal.length]!)}"><animate attributeName="cx" to="${(cx + Math.cos(a) * d * 1.4).toFixed(1)}" dur="1.8s" fill="freeze"/><animate attributeName="cy" to="${(cy + Math.sin(a) * d * 0.8 + 30).toFixed(1)}" dur="1.8s" fill="freeze"/><animate attributeName="opacity" from="1" to="0" dur="1.8s" fill="freeze"/></circle>`)
+    }
+    out.push(`<text x="${cx}" y="${Hv - 18}" text-anchor="middle" font-size="13" font-weight="600" fill="${hex(C.succes)}">✓ réponse terminée</text>`)
+  }
+  const clock = turnStart ? fmt(now() - turnStart) : lastTurn.ms ? fmt(lastTurn.ms) : ''
+  out.push(`<text x="14" y="22" font-size="11" font-weight="700" letter-spacing="1" fill="${hex(C.pensee)}">✦ GALAXIE</text>`)
+  if (clock) out.push(`<text x="${Wv - 14}" y="22" text-anchor="end" font-size="11" fill="${hex(C.gris)}">${clock}</text>`)
+  out.push('</svg>')
+  return out.join('')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type El = (props: any) => any
+function remoteView(Box: El, Text: El, Svg: El) {
+  const st = state()
+  const steps = plan.etapes
+  const done = steps.filter(s => s.statut === 'fait').length
+  const allDone = steps.length > 0 && done === steps.length
+  const live = turnStart > 0
+  const tag = steps.length ? `${done}/${steps.length}` : live ? 'en cours' : lastTurn.ms ? `fini en ${fmt(lastTurn.ms)}` : ''
+  const barLen = 32
+  const fill = steps.length ? Math.round((done / steps.length) * barLen) : 0
+  const cur = Math.max(0, steps.findIndex(s => s.statut !== 'fait'))
+  const shown = allDone ? [] : steps.slice(Math.max(0, cur - 1), Math.max(0, cur - 1) + 3)
+  return (
+    <Box flexDirection="column">
+      <Svg source={svgScene()} alt={`Galaxie : ${st.text}`} isInteractive />
+      <Box flexDirection="row">
+        <Text weight="semibold">{plan.demande ? `« ${cut(plan.demande, 90)} »  ` : ''}</Text>
+        <Text color={allDone ? hex(C.succes) : hex(C.titre)}>{tag}</Text>
+      </Box>
+      <Box flexDirection="row">
+        <Text color={allDone ? hex(C.succes) : hex(C.titre)}>{'━'.repeat(fill)}</Text>
+        <Text color={hex(C.rail)}>{'━'.repeat(barLen - fill)}</Text>
+      </Box>
+      {allDone && <Text color={hex(C.succes)}>{`✓ ${steps.length} étape${steps.length > 1 ? 's' : ''} faite${steps.length > 1 ? 's' : ''}`}</Text>}
+      {shown.map(s => (
+        <Text color={s.statut === 'en_cours' ? hex(C.titre) : hex(C.gris)}>
+          {`${s.statut === 'fait' ? '✓' : s.statut === 'en_cours' ? '◐' : '○'} ${s.titre}${s.statut === 'en_cours' && s.depuis ? '  ' + fmt(now() - s.depuis) : ''}`}
+        </Text>
+      ))}
+      <Text color={st.busy || st.color === C.succes ? hex(st.color) : hex(C.gris)}>{`● ${st.text}${st.busy ? '…' : ''}`}</Text>
+    </Box>
+  )
+}
+
 const STATUTS: StepStatus[] = ['fait', 'en_cours', 'a_faire']
 
 export const register: Register = on => {
@@ -493,10 +610,12 @@ export const register: Register = on => {
       if (!etatFile) return
       const st = state()
       const etat = running.size || turnStart ? 'travail' : finaleAt ? 'pret' : 'veille'
-      const couleur = '#' + (etat === 'pret' ? C.succes : st.color).toString(16).padStart(6, '0')
+      const couleur = '#' + restColor(st).toString(16).padStart(6, '0')
       const n = running.size || (etat === 'travail' ? 1 : 0)
-      const s = `${etat}|${couleur}|${n}|${finaleAt}`
+      const s = `${etat}|${couleur}|${n}|${finaleAt}|${st.text}|${plan.maj}`
       if (s === sig && now() - wrote < 5000) return
+      // l'app redessine le panneau à chaque changement d'état (le terminal, lui, est repeint en continu)
+      if (s !== sig) $.ui.invalidate('ui.render')
       sig = s
       wrote = now()
       await $.fs.write(etatFile,JSON.stringify({ etat, couleur, n, fin: finaleAt, t: now() })).catch(() => {})
@@ -537,8 +656,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     if (e.surface !== 'terminal') {
-      const { Text } = $.ui.resolve(e)
-      return <Text>La Galaxie s'affiche dans le terminal.</Text>
+      const { Box, Text, Svg } = $.ui.resolve(e)
+      return remoteView(Box, Text, Svg)
     }
     const { Raster } = $.ui.resolve(e)
     cols = clamp(e.props.bodyColumns, 24, 512)
