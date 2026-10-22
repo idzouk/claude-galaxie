@@ -40,7 +40,7 @@ swiftc -O GalaxieWidget.swift -o galaxie-mini
 
 S'il manque `swiftc`, installe les outils développeur d'Apple avec `xcode-select --install`.
 
-Fais-la glisser où tu veux, elle retient sa place. **Clic droit → Quitter** pour la fermer. Elle ne se relance pas toute seule au démarrage du Mac : relance `./galaxie-mini &`.
+Elle s'efface toute seule quand ton terminal, l'app Claude ou VS Code est au premier plan, puisqu'ils affichent déjà la grande Galaxie, et revient dès que tu passes à une autre app. Fais-la glisser où tu veux, elle retient sa place. **Clic droit → Quitter** pour la fermer. Elle ne se relance pas toute seule au démarrage du Mac : relance `./galaxie-mini &`.
 
 ## Désinstaller
 

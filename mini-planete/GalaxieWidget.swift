@@ -3,6 +3,7 @@
 //   travail : couleur de l'action en cours, des comètes tournent autour
 //   pret    : la réponse est prête, bouquet puis lueur verte jusqu'à la prochaine demande
 //   veille / hors ligne : planète éteinte
+// Elle s'efface quand le terminal, l'app Claude ou VS Code est au premier plan (ils montrent déjà la Galaxie).
 // Glisser pour déplacer, clic droit pour quitter. `--snapshot <etat> <fichier.png>` rend une image et sort.
 
 import AppKit
@@ -199,10 +200,21 @@ if !panneau.setFrameUsingName("GalaxieMiniPlanete"), let ecran = NSScreen.main {
 panneau.setFrameAutosaveName("GalaxieMiniPlanete")
 panneau.orderFrontRegardless()
 
+// cachée quand une app qui affiche déjà la grande Galaxie est au premier plan (terminaux, app Claude, VS Code)
+let appsAvecGalaxie: Set<String> = [
+    "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
+    "net.kovidgoyal.kitty", "com.github.wez.wezterm", "org.alacritty",
+    "com.anthropic.claudefordesktop", "com.microsoft.VSCode",
+]
+
 var compteur = 0
 Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { _ in
     if compteur % 3 == 0 { vue.lire() }
     compteur += 1
-    vue.avancer()
+    let devant = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+    let cible: CGFloat = appsAvecGalaxie.contains(devant) ? 0 : 1
+    panneau.alphaValue += (cible - panneau.alphaValue) * 0.2
+    panneau.ignoresMouseEvents = panneau.alphaValue < 0.05
+    if panneau.alphaValue > 0.01 { vue.avancer() }
 }
 app.run()
